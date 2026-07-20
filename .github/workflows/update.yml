@@ -29,7 +29,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        cache: 'pip'  # 🚀 开启 pip 缓存，加速依赖安装
+        cache: 'pip'
         
     # 步骤 3: 安装依赖
     - name: Install dependencies
@@ -39,7 +39,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg
         
-    # ✅ 步骤 4: 双重代理感知预验证（已修复 config.ini 缺失报错问题）
+    # ✅ 步骤 4: 双重代理感知预验证
     - name: Pre-validate sources with proxy awareness
       run: |
         python -c "
@@ -49,7 +49,6 @@ jobs:
         CONFIG_PATH = 'config/config.ini'
         BLACKLIST_PATH = 'config/blacklist.txt'
         
-        # ✅ 核心修复：文件不存在时优雅跳过，等待 main.py 生成默认配置
         if not os.path.exists(CONFIG_PATH):
             print(f'[WARN] {CONFIG_PATH} not found, skipping pre-validation.')
             print('[INFO] main.py will generate default config on first run.')
@@ -149,30 +148,26 @@ jobs:
     - name: Run IPTV Scraper and Speedtest
       run: |
         python main.py 2>&1 | tee run.log
-        
-    # ✅ 原步骤 6（日志分析整理 config.ini）已删除
-    # scraper.py 已内置实时自动注释功能，无需再通过日志二次处理
 
-    # ✅ 步骤 7: 提交并推送结果（去时间戳 + 增加 config 目录提交）
+    # ✅ 步骤 7: 提交并推送结果（已修复 --amend/--force 风险）
     - name: Commit and push results
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
-        # 同时提交 output 和 config（scraper.py 会自动修改 config.ini）
         git add output/ config/
         
         if git diff --staged --quiet; then
           echo "📭 无更新，跳过提交。"
         else
-          # 固定文本，不再包含动态时间戳
-          git commit --amend -m "🤖 Auto update output [skip ci]" --no-edit
-          git push --force
+          git commit -m "🤖 Auto update output [skip ci]"
+          git pull --rebase origin main --autostash || true
+          git push
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ✅ 步骤 8: 清理旧运行记录（已修复转义符错误）
+    # ✅ 步骤 8: 清理旧运行记录（只保留最新5条）
     - name: 🧹 清理旧运行记录（只保留最新5条）
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
