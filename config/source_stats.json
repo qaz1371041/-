@@ -1,0 +1,50 @@
+{
+    "https://raw.githubusercontent.com/develop202/migu_video/refs/heads/main/interface.txt": {
+        "total": 155,
+        "alive": 34
+    },
+    "https://raw.githubusercontent.com/pdd520/iptv-api/master/output/result.txt": {
+        "total": 465,
+        "alive": 270
+    },
+    "https://raw.githubusercontent.com/Supprise0901/TVBox_live/refs/heads/main/live.txt": {
+        "total": 605,
+        "alive": 228
+    },
+    "https://raw.githubusercontent.com/cyh92/live/main/source/migu.m3u": {
+        "total": 190,
+        "alive": 84
+    },
+    "https://raw.githubusercontent.com/q1017673817/iptvz/refs/heads/main/zubo.txt": {
+        "total": 1434,
+        "alive": 254
+    },
+    "https://raw.githubusercontent.com/JE668/m3u-checker-max/main/output/live.m3u": {
+        "total": 387,
+        "alive": 369
+    },
+    "https://raw.githubusercontent.com/XinMan939/iptv-api/master/output/result.txt": {
+        "total": 3957,
+        "alive": 1684
+    },
+    "https://gh-proxy.org/https://github.com/alantang1977/cluntop/blob/main/lib/iptv.txt": {
+        "total": 2539,
+        "alive": 138
+    },
+    "https://raw.githubusercontent.com/yyyr-otz/iptv-api/master/output/user_result.txt": {
+        "total": 651,
+        "alive": 178
+    },
+    "https://2121.ccwu.cc/": {
+        "total": 3022,
+        "alive": 0
+    },
+    "https://raw.githubusercontent.com/fafa002/yf2025/refs/heads/main/yiyifafa.txt": {
+        "total": 2350,
+        "alive": 634
+    },
+    "http://202.140.142.145:40207/zhibo/iptv.txt": {
+        "total": 2297,
+        "alive": 879
+    }
+}

@@ -1,0 +1,236 @@
+name: Update IPTV Lists
+
+# 赋予工作流删除运行记录及推送代码的权限
+permissions:
+  contents: write
+  actions: write
+
+on:
+  # 1. 定时触发：每天北京时间早上 6:00 自动运行 (UTC 时间 22:00)
+  schedule:
+    - cron: '0 22 * * *'
+  
+  # 2. 手动触发：GitHub 网页上出现 "Run workflow" 按钮
+  workflow_dispatch:
+
+jobs:
+  build-and-update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 步骤 1: 检出代码
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1 
+        
+    # 步骤 2: 设置 Python 环境
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'  # 🚀 开启 pip 缓存，加速依赖安装
+        
+    # 步骤 3: 安装依赖
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+        
+    # ✅ 步骤 4: 双重代理感知预验证（已修复 config.ini 缺失报错问题）
+    - name: Pre-validate sources with proxy awareness
+      run: |
+        python -c "
+        import re, os, sys, requests
+        from urllib.parse import urlparse
+        
+        CONFIG_PATH = 'config/config.ini'
+        BLACKLIST_PATH = 'config/blacklist.txt'
+        
+        # ✅ 核心修复：文件不存在时优雅跳过，等待 main.py 生成默认配置
+        if not os.path.exists(CONFIG_PATH):
+            print(f'[WARN] {CONFIG_PATH} not found, skipping pre-validation.')
+            print('[INFO] main.py will generate default config on first run.')
+            print('[INFO] Pre-validation will be active on next workflow run.')
+            sys.exit(0)
+        
+        blacklist_keywords = []
+        if os.path.exists(BLACKLIST_PATH):
+            with open(BLACKLIST_PATH, 'r', encoding='utf-8') as f:
+                blacklist_keywords = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+            print(f'[INFO] Loaded {len(blacklist_keywords)} blacklist keywords.')
+        
+        PROXY_KEYWORDS = [
+            'gh-proxy', 'ghproxy', 'ghps', 'gh-api',
+            'mirror.ghproxy', 'jsdelivr', 'kkgithub',
+            'gitclone', 'fastgit', 'ddlc', 'slink.ltd',
+            'cdn.github', 'hub.gitmirror', 'cors.isteed'
+        ]
+        
+        GITHUB_OFFICIAL_HOSTS = {
+            'github.com', 'raw.githubusercontent.com',
+            'gist.githubusercontent.com', 'objects.githubusercontent.com'
+        }
+        
+        def is_proxy_url(url):
+            try:
+                parsed = urlparse(url)
+                host = (parsed.hostname or '').lower()
+                url_lower = url.lower()
+                if host in GITHUB_OFFICIAL_HOSTS:
+                    return False
+                path_and_query = parsed.path + '?' + (parsed.query or '')
+                if re.search(r'https?://(github\.com|raw\.githubusercontent\.com|gist\.githubusercontent\.com)/', path_and_query):
+                    return True
+                if any(kw in url_lower for kw in PROXY_KEYWORDS):
+                    return True
+                return False
+            except Exception:
+                return False
+        
+        def validate_source(url):
+            try:
+                resp = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+                if resp.status_code != 200:
+                    return False, f'HTTP {resp.status_code}'
+                content = resp.text.strip()
+                if len(content) < 10:
+                    return False, 'Empty or too short'
+                has_m3u = '#EXTM3U' in content or '#EXTINF' in content
+                has_txt = bool(re.search(r'^[^#].+?,\s*https?://', content, re.MULTILINE))
+                if not (has_m3u or has_txt):
+                    if is_proxy_url(url) and ('<html' in content.lower() or '<!doctype' in content.lower()):
+                        return False, 'Proxy returned HTML error'
+                    return False, 'Not IPTV format'
+                channels = len(re.findall(r'#EXTINF|^[^#].+?,\s*https?://', content, re.MULTILINE))
+                if channels == 0:
+                    return False, '0 channels found'
+                return True, f'OK ({channels} channels)'
+            except requests.exceptions.Timeout:
+                return False, 'Timeout'
+            except Exception as e:
+                return False, f'Exception: {str(e)[:50]}'
+        
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        modified = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(('http://', 'https://')) and not stripped.startswith('#'):
+                if any(kw in stripped for kw in blacklist_keywords):
+                    leading_spaces = len(line) - len(line.lstrip())
+                    new_lines.append(line[:leading_spaces] + '# ' + line[leading_spaces:])
+                    print(f'  [BLOCK] {stripped[:80]}... -> Blacklisted')
+                    modified = True
+                    continue
+                    
+                is_valid, reason = validate_source(stripped)
+                tag = 'PROXY' if is_proxy_url(stripped) else 'DIRECT'
+                status = 'OK' if is_valid else 'FAIL'
+                print(f'  [{status}] {tag} {stripped[:80]}... -> {reason}')
+                if not is_valid:
+                    leading_spaces = len(line) - len(line.lstrip())
+                    new_lines.append(line[:leading_spaces] + '# ' + line[leading_spaces:])
+                    modified = True
+                    continue
+            new_lines.append(line)
+        if modified:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+            print('[SUCCESS] Pre-validation done. Invalid sources commented out.')
+        else:
+            print('[SUCCESS] All sources valid. No changes needed.')
+        "
+        
+    # 步骤 5: 运行主程序并保存日志
+    - name: Run IPTV Scraper and Speedtest
+      run: |
+        python main.py 2>&1 | tee run.log
+        
+    # ✅ 原步骤 6（日志分析整理 config.ini）已删除
+    # scraper.py 已内置实时自动注释功能，无需再通过日志二次处理
+
+    # ✅ 步骤 7: 提交并推送结果（去时间戳 + 增加 config 目录提交）
+    - name: Commit and push results
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # 同时提交 output 和 config（scraper.py 会自动修改 config.ini）
+        git add output/ config/
+        
+        if git diff --staged --quiet; then
+          echo "📭 无更新，跳过提交。"
+        else
+          # 固定文本，不再包含动态时间戳
+          git commit --amend -m "🤖 Auto update output [skip ci]" --no-edit
+          git push --force
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 步骤 8: 清理旧运行记录（只保留最新5条）
+    - name: 🧹 清理旧运行记录（只保留最新5条）
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
+        CURRENT_RUN_ID: ${{ github.run_id }}
+      run: |
+        echo "🧹 开始清理运行记录..."
+        echo "   仓库: $REPO"
+        echo "   当前运行ID: $CURRENT_RUN_ID"
+        echo ""
+
+        RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/$REPO/actions/runs?per_page=100&status=completed")
+
+        DELETE_IDS=$(echo "$RESPONSE" | python3 -c "
+        import sys, json
+        data = json.load(sys.stdin)
+        runs = data.get('workflow_runs', [])
+        current_id = int('$CURRENT_RUN_ID')
+        keep = 5
+        idx = 0
+        for r in runs:
+            rid = r['id']
+            if rid == current_id:
+                continue
+            idx += 1
+            if idx > keep:
+                print(rid)
+        ")
+
+        if [ -z \"$DELETE_IDS\" ]; then
+          echo \"✅ 没有需要删除的旧运行记录。\"
+          exit 0
+        fi
+
+        TOTAL_DELETE=$(echo \"$DELETE_IDS\" | wc -l)
+        echo \"   📊 将删除 $TOTAL_DELETE 条旧运行记录\"
+        echo \"\"
+
+        SUCCESS=0
+        FAIL=0
+
+        for RUN_ID in $DELETE_IDS; do
+          HTTP_CODE=$(curl -s -o /dev/null -w \"%{http_code}\" \
+            -X DELETE \
+            -H \"Authorization: token $GH_TOKEN\" \
+            -H \"Accept: application/vnd.github+json\" \
+            \"https://api.github.com/repos/$REPO/actions/runs/$RUN_ID\")
+
+          if [ \"$HTTP_CODE\" = \"204\" ]; then
+            echo \"   🗑️ 已删除 #$RUN_ID\"
+            SUCCESS=$((SUCCESS + 1))
+          else
+            echo \"   ❌ 删除失败 #$RUN_ID (HTTP $HTTP_CODE)\"
+            FAIL=$((FAIL + 1))
+          fi
+        done
+
+        echo \"\"
+        echo \"🧹 清理完成！成功: $SUCCESS 条，失败: $FAIL 条\"
