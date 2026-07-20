@@ -172,7 +172,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 步骤 8: 清理旧运行记录（只保留最新5条）
+    # ✅ 步骤 8: 清理旧运行记录（已修复转义符错误）
     - name: 🧹 清理旧运行记录（只保留最新5条）
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -204,33 +204,33 @@ jobs:
                 print(rid)
         ")
 
-        if [ -z \"$DELETE_IDS\" ]; then
-          echo \"✅ 没有需要删除的旧运行记录。\"
+        if [ -z "$DELETE_IDS" ]; then
+          echo "✅ 没有需要删除的旧运行记录。"
           exit 0
         fi
 
-        TOTAL_DELETE=$(echo \"$DELETE_IDS\" | wc -l)
-        echo \"   📊 将删除 $TOTAL_DELETE 条旧运行记录\"
-        echo \"\"
+        TOTAL_DELETE=$(echo "$DELETE_IDS" | wc -l)
+        echo "   📊 将删除 $TOTAL_DELETE 条旧运行记录"
+        echo ""
 
         SUCCESS=0
         FAIL=0
 
         for RUN_ID in $DELETE_IDS; do
-          HTTP_CODE=$(curl -s -o /dev/null -w \"%{http_code}\" \
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -X DELETE \
-            -H \"Authorization: token $GH_TOKEN\" \
-            -H \"Accept: application/vnd.github+json\" \
-            \"https://api.github.com/repos/$REPO/actions/runs/$RUN_ID\")
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID")
 
-          if [ \"$HTTP_CODE\" = \"204\" ]; then
-            echo \"   🗑️ 已删除 #$RUN_ID\"
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "   🗑️ 已删除 #$RUN_ID"
             SUCCESS=$((SUCCESS + 1))
           else
-            echo \"   ❌ 删除失败 #$RUN_ID (HTTP $HTTP_CODE)\"
+            echo "   ❌ 删除失败 #$RUN_ID (HTTP $HTTP_CODE)"
             FAIL=$((FAIL + 1))
           fi
         done
 
-        echo \"\"
-        echo \"🧹 清理完成！成功: $SUCCESS 条，失败: $FAIL 条\"
+        echo ""
+        echo "🧹 清理完成！成功: $SUCCESS 条，失败: $FAIL 条"
